@@ -32,7 +32,11 @@ pipeline {
       }
     }
     stage ('Publish To Nexus'){
+      // Only run automatically on 'dev' branch changes
       when { branch 'dev' }
+      steps {
+        dir() 
+      }
       
     }
   }
