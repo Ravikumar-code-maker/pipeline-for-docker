@@ -23,6 +23,11 @@ pipeline {
     SSH_CRED_ID    = "my-ssh-key-id"
    }
   stages {
+    stage(checlout) {
+      steps {
+        checkout scmGit(branches: [[name: '*/dev']], extensions: [], userRemoteConfigs: [[url: 'https://github.com/Ravikumar-code-maker/pipeline-for-docker']])
+      }
+    }
     stage('BUILD & TEST') {
       // Only run automatically on 'dev' branch changes
       when { branch 'dev' }
