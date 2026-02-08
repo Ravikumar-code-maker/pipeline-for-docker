@@ -40,9 +40,66 @@ pipeline {
       // Only run automatically on 'dev' branch changes
       when { branch 'dev' }
       steps {
-        dir() 
+        configFileProvider([configFile(fileId: 'nexus-global-settings', variable: 'MAVEN_SETTINGS')]) {
+            sh "mvn deploy -s ${MAVEN_SETTINGS} -DaltDeploymentRepository=nexus-releases::default::${NEXUS_URL} -DskipTests" 
+        }        
+      }     
+    }
+    stage('Containerize & Push to GCR') {
+      when { branch 'dev' }
+      steps {
+        withCredentials([file(credentialsId: "{env.GCR_AUTH_KEY}", variable: 'GCP_KEY')]) {
+          sh '''
+               docker build -t ${IMAGE_NAME}:${VERSION} -t ${IMAGE_NAME}:latest
+               gcloud auth activate-service-account --key-file=${GCP_KEy}
+               gcloud auth configure-docker ${GCR_REGION} -q
+               docker push ${IMAGE_NAME}:${VERSION}
+               docker push ${IMAGE_NAME}:latest
+            '''
+        }
       }
-      
+    }
+    stage('Deploy to Dev') {
+      when { branch 'dev' }
+      steps {
+        deployToRemote(env.DEV_URL, 'dev', '8082')
+      }
+    }
+    stage('Promotion To Test') {
+    // No 'when branch' here so we can promote the artifact built in dev
+      steps {
+        timeout(time: 2, unit: 'HOURS') {
+          input message: "Approve deployment of version ${VERSION} to TEST?"
+        }
+        deployToRemote(env.TEST_URL, 'test', '8080')
+      }
+    }
+    stage('Promotion to PRODUCTION') {
+      steps {
+        timeout(time: 24, unit: 'HOURS') {
+          input message: "STRICT APPROVAL: Deploy version ${VERSION} to PRODUCTION"
+        }
+        deplotToRemote(env.PROD_URL, 'prod', '8080')
+      }
     }
   }
+  post {
+    always {
+      cleanWs()
+      echo "workspace cleaned on ${env.NODE_NAME}"
+    }
+    failure {
+      echo "Pipeline Failed! Notification should be sent to Slack/Email here."
+    }
+  }
+}
+// Professional Deployment Helper Function
+def deployToRemote(serverUrl, envName, port) {
+    echo "--- Deploying to ${envname.toUpperCase()} Environment ---"
+    sshagent(["${env.SSH_CRED_ID}"]) {
+      sh """
+      ssh -o StrictHOstKeyChecking=no ${env.SSH_USER}@${SERVERUrl} << 'EOF'
+           set -e #Exit on any error
+           gcloud auth configure-docker  ${GCR_REGION} -q
+    }
 }
