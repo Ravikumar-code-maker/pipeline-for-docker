@@ -23,7 +23,7 @@ pipeline {
     SSH_CRED_ID    = "my-ssh-key-id"
    }
   stages {
-    stage(checlout) {
+    stage(checkout) {
       steps {
         checkout scmGit(branches: [[name: '*/dev']], extensions: [], userRemoteConfigs: [[url: 'https://github.com/Ravikumar-code-maker/pipeline-for-docker']])
       }
@@ -79,7 +79,7 @@ pipeline {
         timeout(time: 24, unit: 'HOURS') {
           input message: "STRICT APPROVAL: Deploy version ${VERSION} to PRODUCTION"
         }
-        deplotToRemote(env.PROD_URL, 'prod', '8080')
+        deploytToRemote(env.PROD_URL, 'prod', '8080')
       }
     }
   }
@@ -98,8 +98,18 @@ def deployToRemote(serverUrl, envName, port) {
     echo "--- Deploying to ${envname.toUpperCase()} Environment ---"
     sshagent(["${env.SSH_CRED_ID}"]) {
       sh """
-      ssh -o StrictHOstKeyChecking=no ${env.SSH_USER}@${SERVERUrl} << 'EOF'
+      ssh -o StrictHOstKeyChecking=no ${env.SSH_USER}@${serverUrl} << 'EOF'
            set -e #Exit on any error
            gcloud auth configure-docker  ${GCR_REGION} -q
+           docker pull ${IMAGE_NAME}:${VERSION}
+           docker rm -rf ${APP_NAME}-${envName} || true
+           docker run -d --restart=unless-stopped \
+               --name ${APP_NAME}-${envName} \
+               -p ${port}:8080 \
+               ${IMAGE_NAME}:${VERSION}
+
+          docker image prune -af --filter "until=24h"
+EOF
+       """
     }
 }
